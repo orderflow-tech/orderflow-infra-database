@@ -10,6 +10,13 @@ on:
       - main
       - develop
 
+# Grant permissions for GitHub Actions to interact with PRs
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  security-events: write
+
 env:
   AWS_REGION: us-east-1
   TERRAFORM_VERSION: '1.7.0'
