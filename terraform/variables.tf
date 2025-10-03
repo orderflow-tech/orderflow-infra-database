@@ -163,7 +163,7 @@ variable "bastion_public_key" {
 variable "allowed_ssh_cidr_blocks" {
   description = "CIDR blocks allowed for SSH access to bastion host"
   type        = list(string)
-  default     = ["0.0.0.0/0"] # Restrict this to your specific IP in production
+  default     = ["10.0.0.0/16"] # More restrictive than 0.0.0.0/0, change to your IP range
 
   validation {
     condition     = length(var.allowed_ssh_cidr_blocks) > 0

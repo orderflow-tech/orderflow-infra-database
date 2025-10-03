@@ -96,8 +96,11 @@ resource "aws_iam_role_policy" "flow_log" {
           "logs:DescribeLogGroups",
           "logs:DescribeLogStreams"
         ]
-        Effect   = "Allow"
-        Resource = "*"
+        Effect = "Allow"
+        Resource = [
+          aws_cloudwatch_log_group.vpc_flow_log.arn,
+          "${aws_cloudwatch_log_group.vpc_flow_log.arn}:*"
+        ]
       }
     ]
   })
@@ -106,7 +109,8 @@ resource "aws_iam_role_policy" "flow_log" {
 # CloudWatch log group for VPC Flow Logs
 resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   name              = "/aws/vpc/${var.project_name}-${var.environment}"
-  retention_in_days = 7
+  retention_in_days = 365                             # 1 year retention
+  kms_key_id        = aws_kms_key.secrets_manager.arn # Enable KMS encryption
 
   tags = {
     Name = "${var.project_name}-vpc-flow-log-${var.environment}"
@@ -234,11 +238,43 @@ resource "random_password" "db_password" {
 resource "aws_kms_key" "secrets_manager" {
   description             = "KMS key for Secrets Manager encryption"
   deletion_window_in_days = 7
+  enable_key_rotation     = true # Enable key rotation
+
+  # Define explicit key policy
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow use of the key for Secrets Manager"
+        Effect = "Allow"
+        Principal = {
+          Service = "secretsmanager.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 
   tags = {
     Name = "${var.project_name}-secrets-manager-key-${var.environment}"
   }
 }
+
+# Data source para obter account ID
+data "aws_caller_identity" "current" {}
 
 resource "aws_kms_alias" "secrets_manager" {
   name          = "alias/${var.project_name}-secrets-manager-${var.environment}"
@@ -277,6 +313,11 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
   kms_key_id  = aws_kms_key.secrets_manager.arn
+
+  # Enable automatic rotation (simplified for lab environment)
+  replica {
+    region = var.aws_region
+  }
 
   tags = {
     Name = "${var.project_name}-db-credentials-${var.environment}"
