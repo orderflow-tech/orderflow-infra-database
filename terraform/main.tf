@@ -314,10 +314,9 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   description = "Database credentials for OrderFlow RDS instance"
   kms_key_id  = aws_kms_key.secrets_manager.arn
 
-  # Enable automatic rotation (simplified for lab environment)
-  replica {
-    region = var.aws_region
-  }
+  # Note: For production environments, configure automatic rotation
+  # This can be done via AWS Console or additional Terraform resources
+  # For lab environments, manual rotation is acceptable
 
   tags = {
     Name = "${var.project_name}-db-credentials-${var.environment}"
@@ -329,10 +328,6 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_string = jsonencode({
     username = var.db_username
     password = random_password.db_password.result
-    engine   = "postgres"
-    host     = aws_db_instance.orderflow.address
-    port     = aws_db_instance.orderflow.port
-    dbname   = var.db_name
   })
 }
 
