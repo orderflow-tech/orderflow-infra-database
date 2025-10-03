@@ -104,7 +104,7 @@ variable "db_iops" {
 variable "publicly_accessible" {
   description = "Whether the database should be publicly accessible"
   type        = bool
-  default     = false  # Secure: no public access
+  default     = false # Secure: no public access
 }
 
 variable "backup_retention_period" {

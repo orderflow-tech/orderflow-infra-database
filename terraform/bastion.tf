@@ -60,9 +60,9 @@ resource "aws_instance" "bastion" {
   count                  = var.create_bastion_host && var.bastion_public_key != "" ? 1 : 0
   ami                    = data.aws_ami.amazon_linux.id
   instance_type          = "t3.nano" # Instância muito pequena e barata
-  key_name              = var.create_bastion_host && var.bastion_public_key != "" ? aws_key_pair.bastion[0].key_name : null
+  key_name               = var.create_bastion_host && var.bastion_public_key != "" ? aws_key_pair.bastion[0].key_name : null
   vpc_security_group_ids = [aws_security_group.bastion.id]
-  subnet_id             = aws_subnet.bastion_public.id
+  subnet_id              = aws_subnet.bastion_public.id
 
   user_data = base64encode(<<-EOF
     #!/bin/bash

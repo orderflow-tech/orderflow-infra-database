@@ -227,13 +227,13 @@ resource "aws_db_instance" "orderflow" {
   identifier = "${var.project_name}-db-${var.environment}"
 
   # Engine configuration
-  engine               = "postgres"
-  engine_version       = var.db_engine_version
-  instance_class       = var.db_instance_class
-  allocated_storage    = var.db_allocated_storage
+  engine                = "postgres"
+  engine_version        = var.db_engine_version
+  instance_class        = var.db_instance_class
+  allocated_storage     = var.db_allocated_storage
   max_allocated_storage = var.db_max_allocated_storage
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  storage_type          = "gp3"
+  storage_encrypted     = true
   # iops removed - not needed for small storage sizes and gp3 provides baseline performance
 
   # Database configuration
@@ -263,12 +263,12 @@ resource "aws_db_instance" "orderflow" {
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
   # monitoring_interval removed due to IAM restrictions in AWS Lab
   # monitoring_role_arn removed due to IAM restrictions in AWS Lab
-  performance_insights_enabled    = true
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
 
   # High availability
-  multi_az               = var.multi_az
-  deletion_protection    = var.environment == "production"
+  multi_az                   = var.multi_az
+  deletion_protection        = var.environment == "production"
   auto_minor_version_upgrade = true
 
   tags = {
@@ -379,19 +379,19 @@ resource "aws_cloudwatch_metric_alarm" "database_storage" {
 
 # Read Replica (opcional, apenas para produção)
 resource "aws_db_instance" "orderflow_replica" {
-  count              = var.create_read_replica ? 1 : 0
-  identifier         = "${var.project_name}-db-replica-${var.environment}"
+  count               = var.create_read_replica ? 1 : 0
+  identifier          = "${var.project_name}-db-replica-${var.environment}"
   replicate_source_db = aws_db_instance.orderflow.identifier
 
-  instance_class       = var.db_instance_class
-  publicly_accessible  = false
-  skip_final_snapshot  = true
+  instance_class      = var.db_instance_class
+  publicly_accessible = false
+  skip_final_snapshot = true
 
   # Monitoring (simplified for AWS Lab)
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
   # monitoring_interval removed due to IAM restrictions in AWS Lab
   # monitoring_role_arn removed due to IAM restrictions in AWS Lab
-  performance_insights_enabled    = true
+  performance_insights_enabled = true
 
   tags = {
     Name = "${var.project_name}-db-replica-${var.environment}"
