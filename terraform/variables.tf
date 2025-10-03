@@ -90,8 +90,8 @@ variable "db_max_allocated_storage" {
   default     = 100
 
   validation {
-    condition     = var.db_max_allocated_storage >= var.db_allocated_storage
-    error_message = "Max allocated storage must be greater than or equal to allocated storage."
+    condition     = var.db_max_allocated_storage >= 20
+    error_message = "Max allocated storage must be at least 20 GB."
   }
 }
 
