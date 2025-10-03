@@ -14,20 +14,29 @@ resource "aws_security_group" "bastion" {
   description = "Security group for bastion host"
   vpc_id      = aws_vpc.database.id
 
-  # SSH access from anywhere (você pode restringir para seu IP)
+  # SSH access from specific IP ranges (more secure)
   ingress {
-    description = "SSH"
+    description = "SSH access from specific IP ranges"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Considere restringir para seu IP específico
+    cidr_blocks = var.allowed_ssh_cidr_blocks # Use variable for allowed IPs
+  }
+
+  # More restrictive egress rules
+  egress {
+    description = "HTTPS outbound"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    description = "All outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTP outbound"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -36,12 +45,24 @@ resource "aws_security_group" "bastion" {
   }
 }
 
+# Security group rule para PostgreSQL do bastion para RDS (recurso separado)
+resource "aws_security_group_rule" "bastion_to_rds" {
+  count                    = var.create_bastion_host ? 1 : 0
+  type                     = "egress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.rds.id
+  security_group_id        = aws_security_group.bastion.id
+  description              = "PostgreSQL to RDS"
+}
+
 # Subnet pública para o bastion host
 resource "aws_subnet" "bastion_public" {
   vpc_id                  = aws_vpc.database.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, 10) # Usa um bloco diferente
   availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false # Don't auto-assign public IP
 
   tags = {
     Name = "${var.project_name}-bastion-subnet-${var.environment}"
@@ -55,6 +76,33 @@ resource "aws_route_table_association" "bastion_public" {
   route_table_id = aws_route_table.database.id
 }
 
+# IAM role para o bastion host
+resource "aws_iam_role" "bastion" {
+  name = "${var.project_name}-bastion-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-bastion-role-${var.environment}"
+  }
+}
+
+resource "aws_iam_instance_profile" "bastion" {
+  name = "${var.project_name}-bastion-profile-${var.environment}"
+  role = aws_iam_role.bastion.name
+}
+
 # Bastion Host EC2 Instance
 resource "aws_instance" "bastion" {
   count                  = var.create_bastion_host && var.bastion_public_key != "" ? 1 : 0
@@ -63,6 +111,27 @@ resource "aws_instance" "bastion" {
   key_name               = var.create_bastion_host && var.bastion_public_key != "" ? aws_key_pair.bastion[0].key_name : null
   vpc_security_group_ids = [aws_security_group.bastion.id]
   subnet_id              = aws_subnet.bastion_public.id
+  iam_instance_profile   = aws_iam_instance_profile.bastion.name
+
+  # Security configurations
+  monitoring                  = true  # Enable detailed monitoring
+  ebs_optimized               = true  # Enable EBS optimization
+  associate_public_ip_address = false # Don't auto-assign public IP
+
+  # IMDSv2 (Instance Metadata Service Version 2)
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required" # Require IMDSv2
+    http_put_response_hop_limit = 1
+  }
+
+  # EBS encryption
+  root_block_device {
+    volume_type           = "gp3"
+    volume_size           = 8
+    encrypted             = true
+    delete_on_termination = true
+  }
 
   user_data = base64encode(<<-EOF
     #!/bin/bash

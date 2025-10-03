@@ -48,6 +48,83 @@ resource "aws_vpc" "database" {
   }
 }
 
+# Configure default security group to restrict all traffic
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.database.id
+
+  # No ingress or egress rules = deny all traffic
+
+  tags = {
+    Name = "${var.project_name}-default-sg-${var.environment}"
+  }
+}
+
+# IAM role for VPC Flow Logs
+resource "aws_iam_role" "flow_log" {
+  name = "${var.project_name}-flow-log-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "vpc-flow-logs.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-flow-log-role-${var.environment}"
+  }
+}
+
+resource "aws_iam_role_policy" "flow_log" {
+  name = "${var.project_name}-flow-log-policy-${var.environment}"
+  role = aws_iam_role.flow_log.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# CloudWatch log group for VPC Flow Logs
+resource "aws_cloudwatch_log_group" "vpc_flow_log" {
+  name              = "/aws/vpc/${var.project_name}-${var.environment}"
+  retention_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-vpc-flow-log-${var.environment}"
+  }
+}
+
+# VPC Flow Logs
+resource "aws_flow_log" "database_vpc" {
+  iam_role_arn    = aws_iam_role.flow_log.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_log.arn
+  traffic_type    = "ALL"
+  vpc_id          = aws_vpc.database.id
+
+  tags = {
+    Name = "${var.project_name}-vpc-flow-log-${var.environment}"
+  }
+}
+
 # Subnets privadas para o RDS
 resource "aws_subnet" "database_private" {
   count             = var.database_subnet_count
@@ -116,15 +193,6 @@ resource "aws_security_group" "rds" {
     cidr_blocks = [var.vpc_cidr]
   }
 
-  # Ingress rule para permitir acesso do Bastion Host
-  ingress {
-    description     = "PostgreSQL from Bastion"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = var.create_bastion_host ? [aws_security_group.bastion.id] : []
-  }
-
   # Ingress rule para permitir acesso do EKS (será configurado via peering)
   ingress {
     description = "PostgreSQL from EKS"
@@ -134,17 +202,24 @@ resource "aws_security_group" "rds" {
     cidr_blocks = var.allowed_cidr_blocks
   }
 
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # RDS typically doesn't need egress rules, removing overly permissive egress
+  # No egress rules needed for RDS security group
 
   tags = {
     Name = "${var.project_name}-rds-sg-${var.environment}"
   }
+}
+
+# Security group rule para permitir acesso do Bastion Host (recurso separado)
+resource "aws_security_group_rule" "rds_from_bastion" {
+  count                    = var.create_bastion_host ? 1 : 0
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.bastion.id
+  security_group_id        = aws_security_group.rds.id
+  description              = "PostgreSQL from Bastion"
 }
 
 # Gerar senha aleatória para o banco de dados
@@ -155,10 +230,53 @@ resource "random_password" "db_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
+# KMS key para criptografia do Secrets Manager
+resource "aws_kms_key" "secrets_manager" {
+  description             = "KMS key for Secrets Manager encryption"
+  deletion_window_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-secrets-manager-key-${var.environment}"
+  }
+}
+
+resource "aws_kms_alias" "secrets_manager" {
+  name          = "alias/${var.project_name}-secrets-manager-${var.environment}"
+  target_key_id = aws_kms_key.secrets_manager.key_id
+}
+
+# IAM role para enhanced monitoring do RDS
+resource "aws_iam_role" "rds_enhanced_monitoring" {
+  name = "${var.project_name}-rds-enhanced-monitoring-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-rds-enhanced-monitoring-role-${var.environment}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
+  role       = aws_iam_role.rds_enhanced_monitoring.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 # Armazenar credenciais no Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
+  kms_key_id  = aws_kms_key.secrets_manager.arn
 
   tags = {
     Name = "${var.project_name}-db-credentials-${var.environment}"
@@ -200,6 +318,12 @@ resource "aws_db_parameter_group" "orderflow" {
   parameter {
     name  = "log_statement"
     value = "all"
+  }
+
+  # Force SSL connections for security
+  parameter {
+    name  = "rds.force_ssl"
+    value = "1"
   }
 
   # Removed shared_preload_libraries as it's a static parameter that requires restart
@@ -259,17 +383,19 @@ resource "aws_db_instance" "orderflow" {
   skip_final_snapshot       = var.environment != "production"
   final_snapshot_identifier = var.environment == "production" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
-  # Monitoring (simplified for AWS Lab)
-  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  # monitoring_interval removed due to IAM restrictions in AWS Lab
-  # monitoring_role_arn removed due to IAM restrictions in AWS Lab
+  # Monitoring (enhanced monitoring enabled)
+  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
+  monitoring_interval                   = 60
+  monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
   performance_insights_enabled          = true
+  performance_insights_kms_key_id       = aws_kms_key.secrets_manager.arn
   performance_insights_retention_period = 7
 
   # High availability
-  multi_az                   = var.multi_az
-  deletion_protection        = var.environment == "production"
-  auto_minor_version_upgrade = true
+  multi_az                            = true # Always enable Multi-AZ for better availability
+  deletion_protection                 = true # Enable deletion protection
+  auto_minor_version_upgrade          = true
+  iam_database_authentication_enabled = true # Enable IAM database authentication
 
   tags = {
     Name = "${var.project_name}-db-${var.environment}"
@@ -383,15 +509,17 @@ resource "aws_db_instance" "orderflow_replica" {
   identifier          = "${var.project_name}-db-replica-${var.environment}"
   replicate_source_db = aws_db_instance.orderflow.identifier
 
-  instance_class      = var.db_instance_class
-  publicly_accessible = false
-  skip_final_snapshot = true
+  instance_class        = var.db_instance_class
+  publicly_accessible   = false
+  skip_final_snapshot   = true
+  copy_tags_to_snapshot = true # Enable copy tags to snapshots
 
-  # Monitoring (simplified for AWS Lab)
+  # Monitoring (enhanced monitoring enabled)
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  # monitoring_interval removed due to IAM restrictions in AWS Lab
-  # monitoring_role_arn removed due to IAM restrictions in AWS Lab
-  performance_insights_enabled = true
+  monitoring_interval             = 60
+  monitoring_role_arn             = aws_iam_role.rds_enhanced_monitoring.arn
+  performance_insights_enabled    = true
+  performance_insights_kms_key_id = aws_kms_key.secrets_manager.arn
 
   tags = {
     Name = "${var.project_name}-db-replica-${var.environment}"
