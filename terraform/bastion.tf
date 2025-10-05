@@ -76,32 +76,10 @@ resource "aws_route_table_association" "bastion_public" {
   route_table_id = aws_route_table.database.id
 }
 
-# IAM role para o bastion host
-resource "aws_iam_role" "bastion" {
-  name = "${var.project_name}-bastion-role-${var.environment}"
+# IAM role for bastion host - DISABLED for AWS Lab
+# AWS Lab has restricted IAM permissions
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = {
-    Name = "${var.project_name}-bastion-role-${var.environment}"
-  }
-}
-
-resource "aws_iam_instance_profile" "bastion" {
-  name = "${var.project_name}-bastion-profile-${var.environment}"
-  role = aws_iam_role.bastion.name
-}
+# Instance profile removed for AWS Lab compatibility
 
 # Bastion Host EC2 Instance
 resource "aws_instance" "bastion" {
@@ -111,7 +89,6 @@ resource "aws_instance" "bastion" {
   key_name               = var.create_bastion_host && var.bastion_public_key != "" ? aws_key_pair.bastion[0].key_name : null
   vpc_security_group_ids = [aws_security_group.bastion.id]
   subnet_id              = aws_subnet.bastion_public.id
-  iam_instance_profile   = aws_iam_instance_profile.bastion.name
 
   # Security configurations
   monitoring                  = true  # Enable detailed monitoring
