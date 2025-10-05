@@ -59,75 +59,15 @@ resource "aws_default_security_group" "default" {
   }
 }
 
-# IAM role for VPC Flow Logs
-resource "aws_iam_role" "flow_log" {
-  name = "${var.project_name}-flow-log-role-${var.environment}"
+# IAM role for VPC Flow Logs - DISABLED for AWS Lab
+# AWS Lab has restricted IAM permissions
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "vpc-flow-logs.amazonaws.com"
-        }
-      }
-    ]
-  })
+# CloudWatch log group removed - not needed without flow logs
+# Removed for AWS Lab compatibility
 
-  tags = {
-    Name = "${var.project_name}-flow-log-role-${var.environment}"
-  }
-}
-
-resource "aws_iam_role_policy" "flow_log" {
-  name = "${var.project_name}-flow-log-policy-${var.environment}"
-  role = aws_iam_role.flow_log.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams"
-        ]
-        Effect = "Allow"
-        Resource = [
-          aws_cloudwatch_log_group.vpc_flow_log.arn,
-          "${aws_cloudwatch_log_group.vpc_flow_log.arn}:*"
-        ]
-      }
-    ]
-  })
-}
-
-# CloudWatch log group for VPC Flow Logs
-resource "aws_cloudwatch_log_group" "vpc_flow_log" {
-  name              = "/aws/vpc/${var.project_name}-${var.environment}"
-  retention_in_days = 365                             # 1 year retention
-  kms_key_id        = aws_kms_key.secrets_manager.arn # Enable KMS encryption
-
-  tags = {
-    Name = "${var.project_name}-vpc-flow-log-${var.environment}"
-  }
-}
-
-# VPC Flow Logs
-resource "aws_flow_log" "database_vpc" {
-  iam_role_arn    = aws_iam_role.flow_log.arn
-  log_destination = aws_cloudwatch_log_group.vpc_flow_log.arn
-  traffic_type    = "ALL"
-  vpc_id          = aws_vpc.database.id
-
-  tags = {
-    Name = "${var.project_name}-vpc-flow-log-${var.environment}"
-  }
-}
+# VPC Flow Logs - DISABLED for AWS Lab
+# Flow logs removed as they require IAM role creation permissions
+# For production environments, enable flow logs with appropriate IAM roles
 
 # Subnets privadas para o RDS
 resource "aws_subnet" "database_private" {
@@ -234,52 +174,13 @@ resource "random_password" "db_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-# KMS key para criptografia do Secrets Manager
-resource "aws_kms_key" "secrets_manager" {
-  description             = "KMS key for Secrets Manager encryption"
-  deletion_window_in_days = 7
-  enable_key_rotation     = true # Enable key rotation
-
-  # Define explicit key policy
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "Enable IAM User Permissions"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "Allow use of the key for Secrets Manager"
-        Effect = "Allow"
-        Principal = {
-          Service = "secretsmanager.amazonaws.com"
-        }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-
-  tags = {
-    Name = "${var.project_name}-secrets-manager-key-${var.environment}"
-  }
-}
+# KMS key removed for AWS Lab compatibility
+# Using default AWS managed key instead
 
 # Data source para obter account ID
 data "aws_caller_identity" "current" {}
 
-resource "aws_kms_alias" "secrets_manager" {
-  name          = "alias/${var.project_name}-secrets-manager-${var.environment}"
-  target_key_id = aws_kms_key.secrets_manager.key_id
-}
+# KMS alias removed for AWS Lab compatibility
 
 # IAM role para enhanced monitoring do RDS
 resource "aws_iam_role" "rds_enhanced_monitoring" {
@@ -312,12 +213,6 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
-  kms_key_id  = aws_kms_key.secrets_manager.arn
-
-  # Enable automatic rotation
-  replica {
-    region = var.aws_region
-  }
 
   tags = {
     Name = "${var.project_name}-db-credentials-${var.environment}"
@@ -382,7 +277,7 @@ resource "aws_db_parameter_group" "orderflow" {
 
 # Option Group (não necessário para PostgreSQL, mas mantido para consistência)
 resource "aws_db_option_group" "orderflow" {
-  name                     = "${var.project_name}-og-${var.environment}"
+  name                     = "${var.project_name}-og-${var.environment}-${formatdate("YYYYMMDD", timestamp())}"
   option_group_description = "Option group for OrderFlow RDS instance"
   engine_name              = "postgres"
   major_engine_version     = "16"
@@ -429,13 +324,11 @@ resource "aws_db_instance" "orderflow" {
   skip_final_snapshot       = var.environment != "production"
   final_snapshot_identifier = var.environment == "production" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
-  # Monitoring (enhanced monitoring enabled)
-  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 60
-  monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
-  performance_insights_enabled          = true
-  performance_insights_kms_key_id       = aws_kms_key.secrets_manager.arn
-  performance_insights_retention_period = 7
+  # Basic monitoring only (AWS Lab compatibility)
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  monitoring_interval             = 0
+  performance_insights_enabled    = false
+  monitoring_role_arn             = null
 
   # High availability
   multi_az                            = true # Always enable Multi-AZ for better availability
@@ -455,35 +348,8 @@ resource "aws_db_instance" "orderflow" {
   }
 }
 
-# IAM Role para Enhanced Monitoring - DISABLED for AWS Lab
+# Enhanced Monitoring disabled for AWS Lab compatibility
 # AWS Lab has restricted IAM permissions, so we can't create custom roles
-# Enhanced monitoring will be disabled to work within Lab constraints
-
-# resource "aws_iam_role" "rds_monitoring" {
-#   name = "${var.project_name}-rds-monitoring-role-${var.environment}"
-# 
-#   assume_role_policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [
-#       {
-#         Action = "sts:AssumeRole"
-#         Effect = "Allow"
-#         Principal = {
-#           Service = "monitoring.rds.amazonaws.com"
-#         }
-#       }
-#     ]
-#   })
-# 
-#   tags = {
-#     Name = "${var.project_name}-rds-monitoring-role-${var.environment}"
-#   }
-# }
-# 
-# resource "aws_iam_role_policy_attachment" "rds_monitoring" {
-#   role       = aws_iam_role.rds_monitoring.name
-#   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
-# }
 
 # CloudWatch Alarms
 resource "aws_cloudwatch_metric_alarm" "database_cpu" {
@@ -562,10 +428,8 @@ resource "aws_db_instance" "orderflow_replica" {
 
   # Monitoring (enhanced monitoring enabled)
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  monitoring_interval             = 60
-  monitoring_role_arn             = aws_iam_role.rds_enhanced_monitoring.arn
-  performance_insights_enabled    = true
-  performance_insights_kms_key_id = aws_kms_key.secrets_manager.arn
+  monitoring_interval             = 0
+  performance_insights_enabled    = false
 
   tags = {
     Name = "${var.project_name}-db-replica-${var.environment}"
