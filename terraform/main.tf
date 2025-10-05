@@ -62,8 +62,8 @@ resource "aws_default_security_group" "default" {
 # CloudWatch log group for VPC Flow Logs
 resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
   name              = "/aws/vpc/flowlogs/${var.project_name}-${var.environment}"
-  retention_in_days = 365              # 1 year retention for compliance
-  kms_key_id        = "alias/aws/logs" # Use AWS managed KMS key for encryption (AWS LAB compatible)
+  retention_in_days = 365                       # 1 year retention for compliance
+  kms_key_id        = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption (Checkov compliance)
 
   tags = {
     Name = "${var.project_name}-vpc-flow-logs-${var.environment}"
@@ -232,8 +232,21 @@ resource "random_password" "db_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-# KMS key removed for AWS Lab compatibility
-# Using default AWS managed key instead
+# KMS key for encryption (AWS Lab compatible)
+resource "aws_kms_key" "orderflow" {
+  description             = "KMS key for OrderFlow database infrastructure encryption"
+  deletion_window_in_days = 7 # Minimum deletion window for AWS Lab
+
+  tags = {
+    Name = "${var.project_name}-kms-key-${var.environment}"
+  }
+}
+
+# KMS alias for easier reference
+resource "aws_kms_alias" "orderflow" {
+  name          = "alias/${var.project_name}-${var.environment}"
+  target_key_id = aws_kms_key.orderflow.key_id
+}
 
 # Data source para obter account ID
 data "aws_caller_identity" "current" {}
@@ -271,8 +284,8 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
 
-  # Use AWS managed KMS key for encryption (AWS LAB compatible)
-  kms_key_id = "alias/aws/secretsmanager"
+  # Use customer managed KMS key for encryption (Checkov compliance)
+  kms_key_id = aws_kms_key.orderflow.arn
 
   tags = {
     Name = "${var.project_name}-db-credentials-${var.environment}"
@@ -389,8 +402,8 @@ resource "aws_db_instance" "orderflow" {
   monitoring_interval                   = 60 # Enable enhanced monitoring (60 seconds)
   monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
   performance_insights_enabled          = true
-  performance_insights_retention_period = 7               # 7 days (free tier)
-  performance_insights_kms_key_id       = "alias/aws/rds" # Use AWS managed KMS key for encryption (AWS LAB compatible)
+  performance_insights_retention_period = 7                         # 7 days (free tier)
+  performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption (Checkov compliance)
 
   # High availability
   multi_az                            = true # Always enable Multi-AZ for better availability
@@ -494,7 +507,7 @@ resource "aws_db_instance" "orderflow_replica" {
   monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
-  performance_insights_kms_key_id       = "alias/aws/rds" # Use AWS managed KMS key for encryption (AWS LAB compatible)
+  performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption (Checkov compliance)
 
   tags = {
     Name = "${var.project_name}-db-replica-${var.environment}"
