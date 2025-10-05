@@ -107,7 +107,7 @@ resource "aws_iam_role_policy" "vpc_flow_logs" {
           "logs:DescribeLogGroups",
           "logs:DescribeLogStreams"
         ]
-        Effect = "Allow"
+        Effect   = "Allow"
         Resource = "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:*"
       }
     ]
@@ -270,7 +270,7 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
-  
+
   # Use AWS managed KMS key for encryption (AWS LAB compatible)
   kms_key_id = "alias/aws/secretsmanager"
 
@@ -385,10 +385,10 @@ resource "aws_db_instance" "orderflow" {
   final_snapshot_identifier = var.environment == "production" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
   # Enhanced monitoring and performance insights
-  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  monitoring_interval             = 60 # Enable enhanced monitoring (60 seconds)
-  monitoring_role_arn             = aws_iam_role.rds_enhanced_monitoring.arn
-  performance_insights_enabled    = true
+  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
+  monitoring_interval                   = 60 # Enable enhanced monitoring (60 seconds)
+  monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7 # 7 days (free tier)
 
   # High availability
@@ -488,10 +488,10 @@ resource "aws_db_instance" "orderflow_replica" {
   copy_tags_to_snapshot = true # Enable copy tags to snapshots
 
   # Enhanced monitoring and performance insights for replica
-  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  monitoring_interval             = 60
-  monitoring_role_arn             = aws_iam_role.rds_enhanced_monitoring.arn
-  performance_insights_enabled    = true
+  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
+  monitoring_interval                   = 60
+  monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
 
   tags = {
