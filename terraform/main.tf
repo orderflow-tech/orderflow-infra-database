@@ -235,7 +235,69 @@ resource "random_password" "db_password" {
 # KMS key for encryption (AWS Lab compatible)
 resource "aws_kms_key" "orderflow" {
   description             = "KMS key for OrderFlow database infrastructure encryption"
-  deletion_window_in_days = 7 # Minimum deletion window for AWS Lab
+  deletion_window_in_days = 7    # Minimum deletion window for AWS Lab
+  enable_key_rotation     = true # Enable automatic key rotation for compliance
+
+  # KMS key policy for Checkov compliance
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudWatch Logs"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow Secrets Manager"
+        Effect = "Allow"
+        Principal = {
+          Service = "secretsmanager.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow RDS"
+        Effect = "Allow"
+        Principal = {
+          Service = "rds.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 
   tags = {
     Name = "${var.project_name}-kms-key-${var.environment}"
@@ -250,8 +312,6 @@ resource "aws_kms_alias" "orderflow" {
 
 # Data source para obter account ID
 data "aws_caller_identity" "current" {}
-
-# KMS alias removed for AWS Lab compatibility
 
 # IAM role para enhanced monitoring do RDS
 resource "aws_iam_role" "rds_enhanced_monitoring" {
