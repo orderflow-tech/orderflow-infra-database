@@ -62,7 +62,8 @@ resource "aws_default_security_group" "default" {
 # CloudWatch log group for VPC Flow Logs
 resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
   name              = "/aws/vpc/flowlogs/${var.project_name}-${var.environment}"
-  retention_in_days = 7 # 7 days retention for cost optimization
+  retention_in_days = 365              # 1 year retention for compliance
+  kms_key_id        = "alias/aws/logs" # Use AWS managed KMS key for encryption (AWS LAB compatible)
 
   tags = {
     Name = "${var.project_name}-vpc-flow-logs-${var.environment}"
@@ -265,7 +266,6 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
   role       = aws_iam_role.rds_enhanced_monitoring.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
-
 # Armazenar credenciais no Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
@@ -389,7 +389,8 @@ resource "aws_db_instance" "orderflow" {
   monitoring_interval                   = 60 # Enable enhanced monitoring (60 seconds)
   monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
   performance_insights_enabled          = true
-  performance_insights_retention_period = 7 # 7 days (free tier)
+  performance_insights_retention_period = 7               # 7 days (free tier)
+  performance_insights_kms_key_id       = "alias/aws/rds" # Use AWS managed KMS key for encryption (AWS LAB compatible)
 
   # High availability
   multi_az                            = true # Always enable Multi-AZ for better availability
@@ -493,6 +494,7 @@ resource "aws_db_instance" "orderflow_replica" {
   monitoring_role_arn                   = aws_iam_role.rds_enhanced_monitoring.arn
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
+  performance_insights_kms_key_id       = "alias/aws/rds" # Use AWS managed KMS key for encryption (AWS LAB compatible)
 
   tags = {
     Name = "${var.project_name}-db-replica-${var.environment}"
