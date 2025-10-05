@@ -326,9 +326,9 @@ resource "aws_db_instance" "orderflow" {
 
   # Basic monitoring only (AWS Lab compatibility)
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  monitoring_interval = 0
-  performance_insights_enabled = false
-  monitoring_role_arn = null
+  monitoring_interval             = 0
+  performance_insights_enabled    = false
+  monitoring_role_arn             = null
 
   # High availability
   multi_az                            = true # Always enable Multi-AZ for better availability
