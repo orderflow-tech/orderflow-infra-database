@@ -32,11 +32,12 @@ provider "aws" {
   }
 }
 
+# Cross-region replication provider not needed for AWS Lab environment
+
 # Data source para obter as zonas de disponibilidade
 data "aws_availability_zones" "available" {
   state = "available"
 }
-
 # VPC para o banco de dados
 resource "aws_vpc" "database" {
   cidr_block           = var.vpc_cidr
@@ -136,6 +137,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "vpc_flow_logs" {
     id     = "vpc_flow_logs_lifecycle"
     status = "Enabled"
 
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
     expiration {
       days = 365 # Keep logs for 1 year
     }
@@ -159,6 +164,9 @@ resource "aws_s3_bucket_logging" "vpc_flow_logs" {
   target_bucket = aws_s3_bucket.vpc_flow_logs.id
   target_prefix = "access-logs/"
 }
+
+# Cross-region replication not implemented for AWS Lab environment
+# This would require additional IAM permissions and costs that are not suitable for lab environment
 
 # Subnets privadas para o RDS
 resource "aws_subnet" "database_private" {
