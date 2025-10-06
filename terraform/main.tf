@@ -366,7 +366,7 @@ data "aws_caller_identity" "current" {}
 # Enhanced monitoring disabled for AWS Lab compatibility
 # AWS Lab has restricted IAM permissions, so we can't create custom roles
 # Armazenar credenciais no Secrets Manager
-# checkov:skip=CKV2_AWS_57:Automatic rotation disabled for AWS Lab compatibility - Lambda functions not available
+#checkov:skip=CKV2_AWS_57:Automatic rotation disabled for AWS Lab compatibility - Lambda functions not available
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
@@ -446,7 +446,7 @@ resource "aws_db_parameter_group" "orderflow" {
 # Option Group removed - not necessary for PostgreSQL and causes dependency issues
 # PostgreSQL doesn't require option groups like MySQL/Oracle
 
-# checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
+#checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
 resource "aws_db_instance" "orderflow" {
   identifier = "${var.project_name}-db-${var.environment}"
 
@@ -576,7 +576,7 @@ resource "aws_cloudwatch_metric_alarm" "database_storage" {
   }
 }
 
-# checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
+#checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
 resource "aws_db_instance" "orderflow_replica" {
   count               = var.create_read_replica ? 1 : 0
   identifier          = "${var.project_name}-db-replica-${var.environment}"
