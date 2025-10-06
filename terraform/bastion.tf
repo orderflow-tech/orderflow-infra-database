@@ -70,13 +70,12 @@ resource "aws_subnet" "bastion_public" {
   }
 }
 
-# Route table association para subnet pública do bastion
 resource "aws_route_table_association" "bastion_public" {
   subnet_id      = aws_subnet.bastion_public.id
   route_table_id = aws_route_table.database.id
 }
 
-# IAM role for bastion host (AWS Lab compatible)
+# Basic IAM role for bastion host (AWS Lab compatible)
 resource "aws_iam_role" "bastion" {
   count = var.create_bastion_host ? 1 : 0
   name  = "${var.project_name}-bastion-role-${var.environment}"
