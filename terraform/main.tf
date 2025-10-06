@@ -446,7 +446,6 @@ resource "aws_db_parameter_group" "orderflow" {
 # Option Group removed - not necessary for PostgreSQL and causes dependency issues
 # PostgreSQL doesn't require option groups like MySQL/Oracle
 
-# RDS Instance
 # checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
 resource "aws_db_instance" "orderflow" {
   identifier = "${var.project_name}-db-${var.environment}"
@@ -577,7 +576,6 @@ resource "aws_cloudwatch_metric_alarm" "database_storage" {
   }
 }
 
-# Read Replica (opcional, apenas para produção)
 # checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
 resource "aws_db_instance" "orderflow_replica" {
   count               = var.create_read_replica ? 1 : 0
