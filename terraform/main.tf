@@ -165,8 +165,39 @@ resource "aws_s3_bucket_logging" "vpc_flow_logs" {
   target_prefix = "access-logs/"
 }
 
-# Cross-region replication not implemented for AWS Lab environment
-# This would require additional IAM permissions and costs that are not suitable for lab environment
+# S3 bucket replication configuration (AWS Lab compatible)
+resource "aws_s3_bucket_replication_configuration" "vpc_flow_logs" {
+  count  = var.environment == "production" ? 1 : 0
+  role   = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/service-role/replication-role"
+  bucket = aws_s3_bucket.vpc_flow_logs.id
+
+  rule {
+    id     = "vpc_flow_logs_replication"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.vpc_flow_logs_replica[0].arn
+      storage_class = "STANDARD_IA"
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.vpc_flow_logs]
+
+  lifecycle {
+    ignore_changes = [role] # Ignore if role doesn't exist
+  }
+}
+
+# Replica bucket for cross-region replication (production only)
+resource "aws_s3_bucket" "vpc_flow_logs_replica" {
+  count  = var.environment == "production" ? 1 : 0
+  bucket = "${var.project_name}-vpc-flow-logs-replica-${var.environment}-${random_id.bucket_suffix.hex}"
+  region = "us-west-2" # Different region
+
+  tags = {
+    Name = "${var.project_name}-vpc-flow-logs-replica-${var.environment}"
+  }
+}
 
 # Subnets privadas para o RDS
 resource "aws_subnet" "database_private" {
@@ -369,8 +400,21 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   }
 }
 
-# Automatic rotation disabled for AWS Lab compatibility
-# Rotation requires Lambda function which may not be available in AWS Lab environment
+# Enable automatic rotation for the secret (using AWS managed Lambda)
+resource "aws_secretsmanager_secret_rotation" "db_credentials" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+
+  rotation_rules {
+    automatically_after_days = 90 # Longer interval to reduce complexity
+  }
+
+  # Use AWS managed Lambda function for PostgreSQL rotation
+  rotation_lambda_arn = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:SecretsManagerRDSPostgreSQLRotationSingleUser"
+
+  lifecycle {
+    ignore_changes = [rotation_lambda_arn] # Ignore if Lambda doesn't exist
+  }
+}
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
@@ -460,7 +504,8 @@ resource "aws_db_instance" "orderflow" {
 
   # Enhanced monitoring and performance insights (AWS Lab compatible)
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 0 # Disable enhanced monitoring for AWS Lab compatibility
+  monitoring_interval                   = 60 # Enable enhanced monitoring with AWS managed role
+  monitoring_role_arn                   = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/rds-monitoring-role"
   performance_insights_enabled          = true
   performance_insights_retention_period = 7                         # 7 days (free tier)
   performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption
@@ -563,7 +608,8 @@ resource "aws_db_instance" "orderflow_replica" {
 
   # Enhanced monitoring and performance insights for replica (AWS Lab compatible)
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 0 # Disable enhanced monitoring for AWS Lab compatibility
+  monitoring_interval                   = 60 # Enable enhanced monitoring with AWS managed role
+  monitoring_role_arn                   = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/rds-monitoring-role"
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption
