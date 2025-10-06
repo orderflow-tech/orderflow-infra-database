@@ -32,7 +32,7 @@ provider "aws" {
   }
 }
 
-# Cross-region replication provider not needed for AWS Lab environment
+# Single region setup for AWS Lab environment (us-east-1 only)
 
 # Data source para obter as zonas de disponibilidade
 data "aws_availability_zones" "available" {
@@ -137,6 +137,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "vpc_flow_logs" {
     id     = "vpc_flow_logs_lifecycle"
     status = "Enabled"
 
+    filter {
+      prefix = ""
+    }
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -165,39 +169,12 @@ resource "aws_s3_bucket_logging" "vpc_flow_logs" {
   target_prefix = "access-logs/"
 }
 
-# S3 bucket replication configuration (AWS Lab compatible)
-resource "aws_s3_bucket_replication_configuration" "vpc_flow_logs" {
-  count  = var.environment == "production" ? 1 : 0
-  role   = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/service-role/replication-role"
-  bucket = aws_s3_bucket.vpc_flow_logs.id
-
-  rule {
-    id     = "vpc_flow_logs_replication"
-    status = "Enabled"
-
-    destination {
-      bucket        = aws_s3_bucket.vpc_flow_logs_replica[0].arn
-      storage_class = "STANDARD_IA"
-    }
-  }
-
-  depends_on = [aws_s3_bucket_versioning.vpc_flow_logs]
-
-  lifecycle {
-    ignore_changes = [role] # Ignore if role doesn't exist
-  }
-}
-
-# Replica bucket for cross-region replication (production only)
-resource "aws_s3_bucket" "vpc_flow_logs_replica" {
-  count  = var.environment == "production" ? 1 : 0
-  bucket = "${var.project_name}-vpc-flow-logs-replica-${var.environment}-${random_id.bucket_suffix.hex}"
-  region = "us-west-2" # Different region
-
-  tags = {
-    Name = "${var.project_name}-vpc-flow-logs-replica-${var.environment}"
-  }
-}
+# Cross-region replication not implemented for AWS Lab environment
+# AWS Lab only supports single region (us-east-1) and has IAM limitations
+# This feature would require:
+# - Multi-region provider configuration
+# - Custom IAM roles for replication
+# - Additional costs not suitable for lab environment
 
 # Subnets privadas para o RDS
 resource "aws_subnet" "database_private" {
@@ -405,7 +382,7 @@ resource "aws_secretsmanager_secret_rotation" "db_credentials" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
 
   rotation_rules {
-    automatically_after_days = 90 # Longer interval to reduce complexity
+    automatically_after_days = 30 # Maximum 90 days for compliance
   }
 
   # Use AWS managed Lambda function for PostgreSQL rotation
