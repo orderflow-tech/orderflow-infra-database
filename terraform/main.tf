@@ -85,8 +85,8 @@ resource "aws_flow_log" "vpc_flow_logs" {
 }
 
 # S3 bucket for VPC Flow Logs (AWS Lab compatible)
-# checkov:skip=CKV_AWS_144:Cross-region replication not supported in AWS Lab environment
 resource "aws_s3_bucket" "vpc_flow_logs" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication not supported in AWS Lab environment
   bucket = "${var.project_name}-vpc-flow-logs-${var.environment}-${random_id.bucket_suffix.hex}"
 
   tags = {
