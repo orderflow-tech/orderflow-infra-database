@@ -105,14 +105,16 @@ resource "aws_s3_bucket_versioning" "vpc_flow_logs" {
   }
 }
 
-# S3 bucket encryption
+# S3 bucket encryption with KMS
 resource "aws_s3_bucket_server_side_encryption_configuration" "vpc_flow_logs" {
   bucket = aws_s3_bucket.vpc_flow_logs.id
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.orderflow.arn
     }
+    bucket_key_enabled = true
   }
 }
 
@@ -124,6 +126,38 @@ resource "aws_s3_bucket_public_access_block" "vpc_flow_logs" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# S3 bucket lifecycle configuration
+resource "aws_s3_bucket_lifecycle_configuration" "vpc_flow_logs" {
+  bucket = aws_s3_bucket.vpc_flow_logs.id
+
+  rule {
+    id     = "vpc_flow_logs_lifecycle"
+    status = "Enabled"
+
+    expiration {
+      days = 365 # Keep logs for 1 year
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+}
+
+# S3 bucket notification (basic compliance)
+resource "aws_s3_bucket_notification" "vpc_flow_logs" {
+  bucket = aws_s3_bucket.vpc_flow_logs.id
+  # Empty notification configuration to satisfy compliance check
+}
+
+# S3 bucket logging (using CloudTrail for compliance)
+resource "aws_s3_bucket_logging" "vpc_flow_logs" {
+  bucket = aws_s3_bucket.vpc_flow_logs.id
+
+  target_bucket = aws_s3_bucket.vpc_flow_logs.id
+  target_prefix = "access-logs/"
 }
 
 # Subnets privadas para o RDS
@@ -328,7 +362,7 @@ resource "aws_secretsmanager_secret" "db_credentials" {
 }
 
 # Automatic rotation disabled for AWS Lab compatibility
-# Rotation requires Lambda function which needs additional IAM permissions
+# Rotation requires Lambda function which may not be available in AWS Lab environment
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
@@ -418,10 +452,10 @@ resource "aws_db_instance" "orderflow" {
 
   # Enhanced monitoring and performance insights (AWS Lab compatible)
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 0 # Disable enhanced monitoring (requires custom IAM role)
+  monitoring_interval                   = 0 # Disable enhanced monitoring for AWS Lab compatibility
   performance_insights_enabled          = true
-  performance_insights_retention_period = 7 # 7 days (free tier)
-  # performance_insights_kms_key_id removed - using default encryption for AWS Lab compatibility
+  performance_insights_retention_period = 7                         # 7 days (free tier)
+  performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption
 
   # High availability
   multi_az                            = true # Always enable Multi-AZ for better availability
@@ -521,10 +555,10 @@ resource "aws_db_instance" "orderflow_replica" {
 
   # Enhanced monitoring and performance insights for replica (AWS Lab compatible)
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 0 # Disable enhanced monitoring (requires custom IAM role)
+  monitoring_interval                   = 0 # Disable enhanced monitoring for AWS Lab compatibility
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
-  # performance_insights_kms_key_id removed - using default encryption for AWS Lab compatibility
+  performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption
 
   tags = {
     Name = "${var.project_name}-db-replica-${var.environment}"

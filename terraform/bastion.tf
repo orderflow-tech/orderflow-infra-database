@@ -70,14 +70,40 @@ resource "aws_subnet" "bastion_public" {
   }
 }
 
-# Route table association para subnet pública do bastion
 resource "aws_route_table_association" "bastion_public" {
   subnet_id      = aws_subnet.bastion_public.id
   route_table_id = aws_route_table.database.id
 }
 
-# IAM role and instance profile removed for AWS Lab compatibility
-# AWS Lab has restricted IAM permissions
+# Basic IAM role for bastion host (AWS Lab compatible)
+resource "aws_iam_role" "bastion" {
+  count = var.create_bastion_host ? 1 : 0
+  name  = "${var.project_name}-bastion-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-bastion-role-${var.environment}"
+  }
+}
+
+# Instance profile for bastion host
+resource "aws_iam_instance_profile" "bastion" {
+  count = var.create_bastion_host ? 1 : 0
+  name  = "${var.project_name}-bastion-profile-${var.environment}"
+  role  = aws_iam_role.bastion[0].name
+}
 
 # Bastion Host EC2 Instance
 resource "aws_instance" "bastion" {
@@ -87,7 +113,7 @@ resource "aws_instance" "bastion" {
   key_name               = var.create_bastion_host && var.bastion_public_key != "" ? aws_key_pair.bastion[0].key_name : null
   vpc_security_group_ids = [aws_security_group.bastion.id]
   subnet_id              = aws_subnet.bastion_public.id
-  # iam_instance_profile removed for AWS Lab compatibility
+  iam_instance_profile   = var.create_bastion_host ? aws_iam_instance_profile.bastion[0].name : null
 
   # Security configurations
   monitoring                  = true  # Enable detailed monitoring
