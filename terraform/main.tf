@@ -366,6 +366,7 @@ data "aws_caller_identity" "current" {}
 # Enhanced monitoring disabled for AWS Lab compatibility
 # AWS Lab has restricted IAM permissions, so we can't create custom roles
 # Armazenar credenciais no Secrets Manager
+#checkov:skip=CKV2_AWS_57:Automatic rotation disabled for AWS Lab compatibility - Lambda functions not available
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-db-credentials-${var.environment}"
   description = "Database credentials for OrderFlow RDS instance"
@@ -378,21 +379,22 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   }
 }
 
-# Enable automatic rotation for the secret (using AWS managed Lambda)
-resource "aws_secretsmanager_secret_rotation" "db_credentials" {
-  secret_id = aws_secretsmanager_secret.db_credentials.id
-
-  rotation_rules {
-    automatically_after_days = 30 # Maximum 90 days for compliance
-  }
-
-  # Use AWS managed Lambda function for PostgreSQL rotation
-  rotation_lambda_arn = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:SecretsManagerRDSPostgreSQLRotationSingleUser"
-
-  lifecycle {
-    ignore_changes = [rotation_lambda_arn] # Ignore if Lambda doesn't exist
-  }
-}
+# Automatic rotation disabled for AWS Lab compatibility
+# AWS Lab doesn't have the required Lambda functions for Secrets Manager rotation
+# resource "aws_secretsmanager_secret_rotation" "db_credentials" {
+#   secret_id = aws_secretsmanager_secret.db_credentials.id
+#
+#   rotation_rules {
+#     automatically_after_days = 30 # Maximum 90 days for compliance
+#   }
+#
+#   # Use AWS managed Lambda function for PostgreSQL rotation
+#   rotation_lambda_arn = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:SecretsManagerRDSPostgreSQLRotationSingleUser"
+#
+#   lifecycle {
+#     ignore_changes = [rotation_lambda_arn] # Ignore if Lambda doesn't exist
+#   }
+# }
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
@@ -444,7 +446,7 @@ resource "aws_db_parameter_group" "orderflow" {
 # Option Group removed - not necessary for PostgreSQL and causes dependency issues
 # PostgreSQL doesn't require option groups like MySQL/Oracle
 
-# RDS Instance
+#checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
 resource "aws_db_instance" "orderflow" {
   identifier = "${var.project_name}-db-${var.environment}"
 
@@ -480,10 +482,11 @@ resource "aws_db_instance" "orderflow" {
   skip_final_snapshot       = var.environment != "production"
   final_snapshot_identifier = var.environment == "production" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
-  # Enhanced monitoring and performance insights (AWS Lab compatible)
-  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 60 # Enable enhanced monitoring with AWS managed role
-  monitoring_role_arn                   = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/rds-monitoring-role"
+  # Enhanced monitoring disabled for AWS Lab compatibility
+  # AWS Lab has restricted IAM permissions, so we can't use custom monitoring roles
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  monitoring_interval             = 0 # Disable enhanced monitoring for AWS Lab
+  # monitoring_role_arn removed - not supported in AWS Lab
   performance_insights_enabled          = true
   performance_insights_retention_period = 7                         # 7 days (free tier)
   performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption
@@ -573,7 +576,7 @@ resource "aws_cloudwatch_metric_alarm" "database_storage" {
   }
 }
 
-# Read Replica (opcional, apenas para produção)
+#checkov:skip=CKV_AWS_118:Enhanced monitoring disabled for AWS Lab compatibility - custom IAM roles not allowed
 resource "aws_db_instance" "orderflow_replica" {
   count               = var.create_read_replica ? 1 : 0
   identifier          = "${var.project_name}-db-replica-${var.environment}"
@@ -584,10 +587,11 @@ resource "aws_db_instance" "orderflow_replica" {
   skip_final_snapshot   = true
   copy_tags_to_snapshot = true # Enable copy tags to snapshots
 
-  # Enhanced monitoring and performance insights for replica (AWS Lab compatible)
-  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
-  monitoring_interval                   = 60 # Enable enhanced monitoring with AWS managed role
-  monitoring_role_arn                   = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/rds-monitoring-role"
+  # Enhanced monitoring disabled for AWS Lab compatibility
+  # AWS Lab has restricted IAM permissions, so we can't use custom monitoring roles
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  monitoring_interval             = 0 # Disable enhanced monitoring for AWS Lab
+  # monitoring_role_arn removed - not supported in AWS Lab
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   performance_insights_kms_key_id       = aws_kms_key.orderflow.arn # Use customer managed KMS key for encryption

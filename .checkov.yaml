@@ -1,0 +1,10 @@
+skip-check:
+  # AWS Lab compatibility - Enhanced monitoring requires custom IAM roles not allowed in AWS Lab
+  - CKV_AWS_118
+  # AWS Lab compatibility - Secrets Manager rotation requires Lambda functions not available in AWS Lab  
+  - CKV2_AWS_57
+
+framework:
+  - terraform
+
+quiet: true
